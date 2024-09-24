@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebSocket Chat</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            background-color: #f4f4f4;
+        }
+        #login-container, #chat-container {
+            background-color: white;
+            border-radius: 10px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+            width: 400px;
+            padding: 20px;
+            display: none;
+        }
+        #login-container {
+            display: block;
+        }
+        input {
+            width: calc(100% - 22px);
+            padding: 10px;
+            margin: 10px 0;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        #send-btn, #login-btn {
+            width: 100%;
+            padding: 10px;
+            background-color: #007BFF;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        #send-btn:hover, #login-btn:hover {
+            background-color: #0056b3;
+        }
+        #chat-box {
+            height: 300px;
+            overflow-y: scroll;
+            padding: 10px;
+            border: 1px solid #ddd;
+            background-color: #fafafa;
+            margin-bottom: 10px;
+        }
+        #chat-box div {
+            padding: 5px;
+            margin-bottom: 5px;
+        }
+        #chat-box div.user {
+            background-color: #e1f5fe;
+            border-radius: 5px;
+        }
+        #chat-box div.server {
+            background-color: #c8e6c9;
+            border-radius: 5px;
+        }
+    </style>
+</head>
+<body>
+
+<!-- Login Form -->
+<div id="login-container">
+    <h2>Login</h2>
+    <input type="text" id="username" placeholder="Username" required>
+    <input type="password" id="password" placeholder="Password" required>
+    <button id="login-btn">Login</button>
+    <div id="login-error" style="color: red; display: none;">Invalid username or password</div>
+</div>
+
+<!-- Chat Window -->
+<div id="chat-container">
+    <div id="chat-box"></div>
+    <input type="text" id="message" placeholder="Type your message here...">
+    <button id="send-btn">Send</button>
+</div>
+
+<script>
+    const loginContainer = document.getElementById('login-container');
+    const chatContainer = document.getElementById('chat-container');
+    const loginButton = document.getElementById('login-btn');
+    const chatBox = document.getElementById('chat-box');
+    const messageInput = document.getElementById('message');
+    const sendButton = document.getElementById('send-btn');
+    const loginError = document.getElementById('login-error');
+
+    let socket;
+
+    // Function to display messages in chatbox
+    function displayMessage(message, isServer = false) {
+        const messageDiv = document.createElement('div');
+        messageDiv.classList.add(isServer ? 'server' : 'user');
+        messageDiv.textContent = message;
+        chatBox.appendChild(messageDiv);
+        chatBox.scrollTop = chatBox.scrollHeight; // Scroll to bottom
+    }
+
+    // Handle login and authentication
+    loginButton.addEventListener('click', async () => {
+        const username = document.getElementById('username').value;
+        const password = document.getElementById('password').value;
+
+        if (!username || !password) {
+            return;
+        }
+
+        try {
+            // Call backend API to get authorization key
+            const response = await fetch('http://localhost:3001/api/auth', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ username, password })
+            });
+
+            const data = await response.json();
+            console.log(data);
+
+            if (response.ok) {
+                const authKey = data.authKey;
+                loginContainer.style.display = 'none';
+                chatContainer.style.display = 'block';
+
+                // Connect to WebSocket using the authorization key
+                const wsUrl = `ws://localhost:4000?authKey=${authKey}`;
+                socket = new WebSocket(wsUrl);
+
+                socket.onopen = function() {
+                    displayMessage('Connected to server', true);
+                };
+
+                socket.onmessage = function(event) {
+                    displayMessage(`Server: ${event.data}`, true);
+                };
+
+                socket.onerror = function(error) {
+                    displayMessage(`WebSocket error: ${error.message}`, true);
+                };
+
+                socket.onclose = function() {
+                    displayMessage('Connection closed', true);
+                };
+            } else {
+                loginError.style.display = 'block';
+                setTimeout(() => {
+                    loginError.style.display = 'none';
+                }, 3000);
+            }
+        } catch (error) {
+            console.error('Error during login:', error);
+        }
+    });
+
+    // Send a message when the "Send" button is clicked
+    sendButton.addEventListener('click', function() {
+        const message = messageInput.value;
+        if (message && socket.readyState === WebSocket.OPEN) {
+            socket.send(message);  // Send message to WebSocket server
+            displayMessage(`You: ${message}`);  // Display the message in the chat
+            messageInput.value = '';  // Clear input
+        }
+    });
+
+    // Press Enter to send a message
+    messageInput.addEventListener('keypress', function(event) {
+        if (event.key === 'Enter') {
+            sendButton.click();
+        }
+    });
+</script>
+
+</body>
+</html>
+
